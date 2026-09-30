@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# Training outputs (checkpoints and rollouts stay local; commit results summaries only)
+outputs/
+checkpoints/
+wandb/
+swanlog/
+*.safetensors
+*.bin
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/

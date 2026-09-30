@@ -1,0 +1,22 @@
+[project]
+name = "grpo-dapo"
+version = "0.1.0"
+description = "GRPO and DAPO for math reasoning on Qwen2.5, implemented in PyTorch with controlled ablations"
+readme = "README.md"
+authors = [
+    { name = "selmapan0817", email = "selmapan11@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = []
+
+[build-system]
+requires = ["uv_build>=0.9.0,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
