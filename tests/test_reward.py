@@ -138,6 +138,15 @@ def test_extract_answer_is_linear_time() -> None:
         pytest.param("no idea", None),
         # Empty text cannot be parsed.
         pytest.param("", None),
+        # MATH-style thousands separator (e.g. 10,\!080 in the MATH dataset).
+        pytest.param(r"1,\!000", 1000),
+        pytest.param(r"10,\!080", 10080),
+        # LaTeX {,} thousands separator.
+        pytest.param(r"1{,}000", 1000),
+        # LaTeX thin space used as a thousands separator.
+        pytest.param(r"1\,000", 1000),
+        # Unicode minus sign (U+2212) is a minus, not something to skip.
+        pytest.param("\u22123", -3),
         # Fractions are out of scope until MATH (R5).
         pytest.param("1/2", None),
         # None-like text does not raise.
@@ -223,6 +232,12 @@ def test_is_equivalent(
         pytest.param(r"\boxed{12 or 72}", "72", 0.0),
         # A negative answer is rewarded end to end.
         pytest.param(r"\boxed{-3}", "-3", 1.0),
+        # MATH-style thousands separator: a correct answer must not score 0.
+        pytest.param(r"The total is \boxed{1,\!000}.", "1000", 1.0),
+        # Unicode minus: a correct negative answer is rewarded.
+        pytest.param("\\boxed{\u22123}", "-3", 1.0),
+        # Unicode minus: a wrong sign must not be rewarded (false positive).
+        pytest.param("\\boxed{\u22123}", "3", 0.0),
         # A missing completion fails closed.
         pytest.param(None, "72", 0.0),
         # A missing gold answer fails closed.

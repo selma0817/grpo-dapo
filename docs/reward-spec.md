@@ -100,6 +100,10 @@ Timing check: `extract_answer` on the 10,000 unclosed braces finishes in under 1
 | `"12 or 18"` | `None` | two numbers: ambiguous |
 | `"no idea"` | `None` | no number |
 | `""` | `None` | empty |
+| `"1,\!000"`, `"10,\!080"` | `1000`, `10080` | MATH-style thousands separator |
+| `"1{,}000"` | `1000` | LaTeX `{,}` separator |
+| `"1\,000"` | `1000` | LaTeX thin space as a thousands separator |
+| `"−3"` (U+2212) | `-3` | Unicode minus sign |
 | `"1/2"` | `None` | fractions out of scope until MATH (R5) |
 | `"None"` | `None` | `None`-like text does not raise |
 | `None` | `None` | non-string input fails closed |
@@ -141,6 +145,9 @@ Type check: `parse_number("72")`, `parse_number("2.50")` and `parse_number("1,00
 | `"\boxed{}"` | `"72"` | `0.0` | empty box |
 | `"\boxed{12 or 72}"` | `"72"` | `0.0` | ambiguous box |
 | `"\boxed{-3}"` | `"-3"` | `1.0` | negative answer end to end |
+| `"The total is \boxed{1,\!000}."` | `"1000"` | `1.0` | MATH-style separator: a correct answer must not score 0 |
+| `"\boxed{−3}"` (U+2212) | `"-3"` | `1.0` | Unicode minus, correct answer |
+| `"\boxed{−3}"` (U+2212) | `"3"` | `0.0` | Unicode minus, wrong sign must not be rewarded |
 | `None` | `"72"` | `0.0` | missing completion fails closed |
 | `"\boxed{72}"` | `None` | `0.0` | missing gold fails closed |
 | odd Unicode text | `"72"` | `0.0` | unusual characters do not raise |
@@ -154,8 +161,9 @@ For whoever implements `src/grpo_dapo/reward.py`:
 - **Explicit checks, not a catch-all.** Fail closed (D5) with `isinstance` / `None` checks. Don't wrap functions in `try/except Exception: return 0.0`: that would also hide bugs in the reward itself (a typo would silently make every reward 0.0). If a last-resort catch-all is added anywhere, it must log what it caught.
 - **`extract_answer` runs in linear time without recursion.** Use one left-to-right pass with a stack of open-brace positions. Scanning forward from every `\boxed{` is quadratic and far too slow for 10,000 unclosed braces (a test enforces a time limit).
 - **The last *complete* box wins.** In `\boxed{70} then \boxed{7` (the final box was cut off), the answer is `"70"`. Only a completion with no complete box at all gives `None`.
-- **`parse_number`:** remove `\$`, `$`, `%`, and commas *between digits* (so `1,000` → `1000`, while `12, 18` stays two numbers). Match numbers with `[0-9]`, not `\d` (which also matches non-ASCII digits like `٣`). Build the result with `Fraction(string)`, never `float`.
+- **`parse_number`:** first normalize LaTeX spacing and separators (`\!`, `\,`, and `{,}` → `,`) and the Unicode minus sign `−` (U+2212) → `-`. Then remove `\$`, `$`, `%`, and commas *between digits* (so `1,000` → `1000`, while `12, 18` stays two numbers). Match numbers with `[0-9]`, not `\d` (which also matches non-ASCII digits like `٣`). Build the result with `Fraction(string)`, never `float`.
 - **`is_equivalent` is the only place equality is defined.** `compute_reward` calls `extract_answer`, then `is_equivalent`, and returns `1.0` or `0.0`.
+- **The `except ValueError` in `parse_number` is intentional.** Python refuses to convert decimal strings longer than 4,300 digits to `int` (a guard against slow, quadratic conversions), so a model that degenerates into a huge number makes `Fraction` raise. Fail closed with `None`.
 - Type hints and a one-line docstring per function. Do not modify the tests to make them pass.
 
 ## Instructions for writing the tests
