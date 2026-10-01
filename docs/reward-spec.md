@@ -75,6 +75,9 @@ is_equivalent ──parse_number(pred) + parse_number(gold)──▶ exact equal
 | odd Unicode text | `None` | unusual characters do not raise |
 | a very long garbage string | `None` | pathological model output does not raise |
 | `"\boxed{"` repeated 10,000 times | `None` | thousands of unclosed braces: must stay fast and must not hit the recursion limit |
+| `"\boxed{70} then \boxed{7"` | `"70"` | the last *complete* box wins when the final box was cut off |
+
+Timing check: `extract_answer` on the 10,000 unclosed braces finishes in under 1 second (a linear scan takes milliseconds; a quadratic one takes minutes).
 
 ### `parse_number`
 
@@ -143,9 +146,21 @@ Type check: `parse_number("72")`, `parse_number("2.50")` and `parse_number("1,00
 | odd Unicode text | `"72"` | `0.0` | unusual characters do not raise |
 | a very long garbage string | `"72"` | `0.0` | pathological model output does not raise |
 
+## Implementation requirements
+
+For whoever implements `src/grpo_dapo/reward.py`:
+
+- **Standard library only** (`re`, `fractions`). No `math-verify` until MATH (R5).
+- **Explicit checks, not a catch-all.** Fail closed (D5) with `isinstance` / `None` checks. Don't wrap functions in `try/except Exception: return 0.0`: that would also hide bugs in the reward itself (a typo would silently make every reward 0.0). If a last-resort catch-all is added anywhere, it must log what it caught.
+- **`extract_answer` runs in linear time without recursion.** Use one left-to-right pass with a stack of open-brace positions. Scanning forward from every `\boxed{` is quadratic and far too slow for 10,000 unclosed braces (a test enforces a time limit).
+- **The last *complete* box wins.** In `\boxed{70} then \boxed{7` (the final box was cut off), the answer is `"70"`. Only a completion with no complete box at all gives `None`.
+- **`parse_number`:** remove `\$`, `$`, `%`, and commas *between digits* (so `1,000` → `1000`, while `12, 18` stays two numbers). Match numbers with `[0-9]`, not `\d` (which also matches non-ASCII digits like `٣`). Build the result with `Fraction(string)`, never `float`.
+- **`is_equivalent` is the only place equality is defined.** `compute_reward` calls `extract_answer`, then `is_equivalent`, and returns `1.0` or `0.0`.
+- Type hints and a one-line docstring per function. Do not modify the tests to make them pass.
+
 ## Instructions for writing the tests
 
-- Write `tests/test_reward.py` only. **Do not implement `reward.py`**: it is written by hand, against these tests.
+- The tests in `tests/test_reward.py` were written first, from the tables above; `reward.py` is implemented against them.
 - One test function per function above, each using `@pytest.mark.parametrize` over the cases in its table, with a comment on every case saying what it checks.
 - Import from `grpo_dapo.reward`. Compare `parse_number` results to ints or `Fraction`s (`Fraction(18) == 18` is true).
 - Use raw strings (`r"..."`) for anything containing backslashes, such as `\boxed` and `\text`.

@@ -1,5 +1,6 @@
 """Tests for the rule-based GSM8K reward."""
 
+import time
 from fractions import Fraction
 
 import pytest
@@ -84,10 +85,20 @@ def test_extract_gold(answer_field: str | None, expected: str | None) -> None:
         pytest.param(LONG_GARBAGE, None),
         # Thousands of unclosed braces: must stay fast and not hit the recursion limit.
         pytest.param(UNCLOSED_BRACES, None),
+        # The last complete box wins when the final box was cut off.
+        pytest.param(r"\boxed{70} then \boxed{7", "70"),
     ],
 )
 def test_extract_answer(completion: str | None, expected: str | None) -> None:
     assert extract_answer(completion) == expected
+
+
+def test_extract_answer_is_linear_time() -> None:
+    # A linear scan handles 10,000 unclosed braces in milliseconds; scanning
+    # forward from every \boxed{ is quadratic and takes minutes.
+    start = time.perf_counter()
+    assert extract_answer(UNCLOSED_BRACES) is None
+    assert time.perf_counter() - start < 1.0
 
 
 @pytest.mark.parametrize(
