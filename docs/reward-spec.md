@@ -10,30 +10,35 @@ The rule-based reward scores one model completion against the gold answer: `1.0`
 | D2 | Correct number, but no `\boxed{}` | Reward `0.0` (strict) | Guessing which number is "the answer" gives noisy rewards and invites hacking. The model learns the format quickly; the format rate is tracked as a metric |
 | D3 | Several `\boxed{}` in one completion | **The last one** counts | The last box is the model's final decision. Spamming boxes doesn't help, since only the last one counts |
 | D4 | When are two answers equal? | **Same number**, compared exactly (`fractions.Fraction`) after cleanup | `18 = 18.0 = 18.00`, `1,000 = 1000`, with no floating-point surprises |
+| D5 | Malformed or unexpected input | **Fail closed**, returning `None`, `False`, or `0.0` | Reward code runs inside the training loop; malformed model output must never stop a run |
 
 Smaller defaults (change any of them, but update the tests to match):
 
-- **Bad data crashes, bad model output scores 0.** A gold answer without `####` is a dataset bug, so `extract_gold` raises `ValueError`. A model completion without a usable answer just gets `0.0`.
+- **Garbage input never crashes the reward.** Missing markers, very long strings, unusual Unicode, `None`, and `None`-like text fail closed with `None`, `False`, or `0.0`. **Gold answers are validated once at load time instead:** `data.py` must check that `extract_gold` and `parse_number` succeed for every example, and crash or report if any fail. Otherwise a malformed gold answer would silently score every completion 0, giving that question Â = 0 with no warning.
 - `extract_answer` returns the box content **stripped of surrounding whitespace**, and returns `None` for an empty box, no box, or an unclosed box (output cut off at the length limit).
 - `extract_answer` matches **balanced braces**, so `\boxed{\text{18}}` gives `\text{18}`, not `\text{18`.
 - `parse_number` ignores `$`, `\$`, `%`, thousands commas, whitespace and non-numeric text, then requires **exactly one number**: zero numbers or two or more numbers give `None`.
-- Fractions (`1/2`, `\frac{1}{2}`) and scientific notation are **out of scope** until the MATH dataset is added; `parse_number` returns `None` for them for now.
+- Fractions (`1/2`, `\frac{1}{2}`) and scientific notation are **out of scope until the MATH dataset is added (R5)**; `parse_number` returns `None` for them for now. GSM8K gold answers are integers by design, so this only affects rare cases like `\frac{144}{2}`. For MATH, `is_equivalent` will try the exact numeric check first and fall back to `math-verify`.
+- `parse_number` returns a `fractions.Fraction`, never a `float`, so equality is exact (D4). A test checks the type, since `18.0 == 18` would let a float implementation pass every value check.
 
 ## Functions (all in `src/grpo_dapo/reward.py`)
 
 ```text
-GSM8K "answer" field ──extract_gold──▶ "72" ──────────┐
-                                                      ├─▶ parse_number on both ─▶ equal? ─▶ 1.0 / 0.0
-model completion ──extract_answer──▶ "72" or None ────┘
-                  └──────────────────── compute_reward (ties the steps together) ────────────┘
+GSM8K "answer" field ──extract_gold──▶ "72" or None ──────────────┐
+                                                                  ├─▶ is_equivalent ─▶ bool
+model completion ──extract_answer──▶ "72" or None ────────────────┘         │
+                  └──────────── compute_reward (extract, compare, score) ───┴─▶ 1.0 / 0.0
+
+is_equivalent ──parse_number(pred) + parse_number(gold)──▶ exact equality
 ```
 
 | Function | Signature | Job |
 | --- | --- | --- |
-| `extract_gold` | `(answer_field: str) -> str` | Return the text after `####`, stripped. Raise `ValueError` if there is no `####`. |
-| `extract_answer` | `(completion: str) -> str \| None` | Return the content of the **last** complete `\boxed{...}`, stripped. `None` if there is none, or it is empty. |
-| `parse_number` | `(text: str) -> Fraction \| None` | Clean up the text and return its single number exactly. `None` if it doesn't contain exactly one number. |
-| `compute_reward` | `(completion: str, gold: str) -> float` | `gold` is the output of `extract_gold`. Return `1.0` if both parse to the same number, else `0.0`. |
+| `extract_gold` | `(answer_field: str \| None) -> str \| None` | Return the text after `####`, stripped. Return `None` for missing, malformed, or non-string input. |
+| `extract_answer` | `(completion: str \| None) -> str \| None` | Return the content of the **last** complete `\boxed{...}`, stripped. `None` if there is none, it is empty, or the input is invalid. |
+| `parse_number` | `(text: str \| None) -> Fraction \| None` | Clean up the text and return its single number exactly. `None` if it doesn't contain exactly one number or the input is invalid. |
+| `is_equivalent` | `(pred: str \| None, gold: str \| None) -> bool` | Parse both answers and compare them exactly. Return `False` if either answer cannot be parsed. This is the only function that defines answer equivalence. |
+| `compute_reward` | `(completion: str \| None, gold: str \| None) -> float` | Extract the completion's answer, delegate comparison to `is_equivalent`, and return `1.0` for equivalent answers or `0.0` otherwise. Never raise for malformed inputs. |
 
 ## Test cases
 
@@ -46,7 +51,10 @@ model completion ──extract_answer──▶ "72" or None ────┘
 | `"...\n#### 72\n"` | `"72"` | trailing newline / whitespace |
 | `"...\n#### 1,000"` | `"1,000"` | returns raw text; cleanup is `parse_number`'s job |
 | `"...\n#### -3"` | `"-3"` | negative gold |
-| `"no marker here"` | raises `ValueError` | dataset bug fails loudly |
+| `"no marker here"` | `None` | missing marker fails closed |
+| `None` | `None` | non-string input fails closed |
+| odd Unicode text | `None` | unusual characters do not raise |
+| a very long garbage string | `None` | pathological model/data text does not raise |
 
 ### `extract_answer`
 
@@ -63,6 +71,10 @@ model completion ──extract_answer──▶ "72" or None ────┘
 | `"\boxed{\text{18}}"` | `"\text{18}"` | balanced braces |
 | `"\boxed{18 \text{ dollars}}"` | `"18 \text{ dollars}"` | text inside the box is kept; parsing handles it |
 | `"\boxed{1} \boxed{2} \boxed{3} ... \boxed{100}"` | `"100"` | box spam: only the last counts |
+| `None` | `None` | non-string input fails closed |
+| odd Unicode text | `None` | unusual characters do not raise |
+| a very long garbage string | `None` | pathological model output does not raise |
+| `"\boxed{"` repeated 10,000 times | `None` | thousands of unclosed braces: must stay fast and must not hit the recursion limit |
 
 ### `parse_number`
 
@@ -85,7 +97,29 @@ model completion ──extract_answer──▶ "72" or None ────┘
 | `"12 or 18"` | `None` | two numbers: ambiguous |
 | `"no idea"` | `None` | no number |
 | `""` | `None` | empty |
-| `"1/2"` | `None` | fractions out of scope for now |
+| `"1/2"` | `None` | fractions out of scope until MATH (R5) |
+| `"None"` | `None` | `None`-like text does not raise |
+| `None` | `None` | non-string input fails closed |
+| odd Unicode text | `None` | unusual characters do not raise |
+| a very long garbage string | `None` | pathological text does not raise |
+
+Type check: `parse_number("72")`, `parse_number("2.50")` and `parse_number("1,000")` all return a `Fraction` (D4).
+
+### `is_equivalent`
+
+| Pred | Gold | Expected | Checks |
+| --- | --- | --- | --- |
+| `"72"` | `"72"` | `True` | identical numbers |
+| `"18.00"` | `"18"` | `True` | formatting differs, same number |
+| `"1,000"` | `"1000"` | `True` | comma formatting differs |
+| `"70"` | `"72"` | `False` | different numbers |
+| `"12 or 72"` | `"72"` | `False` | ambiguous prediction |
+| `"12345678901234567891"` | `"12345678901234567890"` | `False` | exact comparison: these are equal as floats (D4) |
+| `None` | `"72"` | `False` | missing prediction fails closed |
+| `"72"` | `None` | `False` | missing gold fails closed |
+| `"None"` | `"72"` | `False` | `None`-like text does not raise |
+| odd Unicode text | `"72"` | `False` | unusual characters do not raise |
+| a very long garbage string | `"72"` | `False` | pathological text does not raise |
 
 ### `compute_reward`
 
@@ -103,6 +137,11 @@ model completion ──extract_answer──▶ "72" or None ────┘
 | `"... so the total is \boxed{7"` | `"72"` | `0.0` | cut off |
 | `"\boxed{}"` | `"72"` | `0.0` | empty box |
 | `"\boxed{12 or 72}"` | `"72"` | `0.0` | ambiguous box |
+| `"\boxed{-3}"` | `"-3"` | `1.0` | negative answer end to end |
+| `None` | `"72"` | `0.0` | missing completion fails closed |
+| `"\boxed{72}"` | `None` | `0.0` | missing gold fails closed |
+| odd Unicode text | `"72"` | `0.0` | unusual characters do not raise |
+| a very long garbage string | `"72"` | `0.0` | pathological model output does not raise |
 
 ## Instructions for writing the tests
 
