@@ -4,14 +4,9 @@ __pycache__/
 .venv/
 .pytest_cache/
 
-# Training outputs (checkpoints and rollouts stay local; commit results summaries only)
-outputs/*
-!outputs/m0/
-outputs/m0/*
-!outputs/m0/baseline_full/
-outputs/m0/baseline_full/*
-!outputs/m0/baseline_full/summary.json
-*.jsonl
+# Run artifacts stay local (completions, checkpoints, logs).
+# Result summaries worth keeping are copied into results/, which is tracked.
+outputs/
 checkpoints/
 wandb/
 swanlog/

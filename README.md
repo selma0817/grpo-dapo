@@ -32,7 +32,7 @@ src/grpo_dapo/
 └── diagnostics.py    M4  entropy, KL, clip fractions, zero-variance share, lengths
 ```
 
-Specs for each milestone are in `docs/`.
+Specs for each milestone are in `docs/`. Run artifacts (completions, checkpoints) are written to `outputs/`, which is git-ignored; result summaries worth keeping are copied into `results/`.
 
 ## Development
 
