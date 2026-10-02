@@ -5,7 +5,13 @@ __pycache__/
 .pytest_cache/
 
 # Training outputs (checkpoints and rollouts stay local; commit results summaries only)
-outputs/
+outputs/*
+!outputs/m0/
+outputs/m0/*
+!outputs/m0/baseline_full/
+outputs/m0/baseline_full/*
+!outputs/m0/baseline_full/summary.json
+*.jsonl
 checkpoints/
 wandb/
 swanlog/

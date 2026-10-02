@@ -1,0 +1,94 @@
+{
+  "model": "Qwen/Qwen2.5-0.5B-Instruct",
+  "dataset": "openai/gsm8k",
+  "split": "test",
+  "num_questions": 1319,
+  "system_prompt": "Please reason step by step, and put your final answer within \\boxed{}.",
+  "seed": 0,
+  "generation_settings": {
+    "greedy": {
+      "do_sample": false,
+      "temperature": 1.0,
+      "top_p": 1.0,
+      "top_k": 0,
+      "repetition_penalty": 1.0,
+      "max_new_tokens": 512,
+      "num_return_sequences": 1,
+      "eos_token_id": [
+        151645,
+        151643
+      ],
+      "pad_token_id": 151643,
+      "batch_size": 32
+    },
+    "sampled": {
+      "do_sample": true,
+      "temperature": 1.0,
+      "top_p": 1.0,
+      "top_k": 0,
+      "repetition_penalty": 1.0,
+      "max_new_tokens": 512,
+      "num_return_sequences": 8,
+      "eos_token_id": [
+        151645,
+        151643
+      ],
+      "pad_token_id": 151643,
+      "batch_size": 32
+    }
+  },
+  "metrics": {
+    "greedy": {
+      "accuracy": 0.47536012130401817,
+      "format_rate": 0.9461713419257013,
+      "unparseable_rate": 0.009097801364670205,
+      "truncation_rate": 0.04397270659590599,
+      "response_length": {
+        "mean": 306.2608036391205,
+        "median": 296,
+        "p90": 440.0,
+        "max": 512
+      }
+    },
+    "sampled": {
+      "accuracy": 0.3147270659590599,
+      "format_rate": 0.7790940106141016,
+      "unparseable_rate": 0.010329795299469294,
+      "truncation_rate": 0.09931766489764973,
+      "response_length": {
+        "mean": 320.3284685367703,
+        "median": 306.0,
+        "p90": 511.0,
+        "max": 512
+      },
+      "pass_at_k": {
+        "1": 0.3147270659590599,
+        "2": 0.4460088811870465,
+        "4": 0.5702588541102567,
+        "8": 0.6808188021228203
+      },
+      "group_stats": {
+        "all_correct_rate": 0.0356330553449583,
+        "all_wrong_rate": 0.3191811978771797,
+        "mixed_rate": 0.645185746777862,
+        "histogram": {
+          "0": 421,
+          "1": 211,
+          "2": 146,
+          "3": 107,
+          "4": 98,
+          "5": 99,
+          "6": 96,
+          "7": 94,
+          "8": 47
+        },
+        "mean_p_one_minus_p": 0.11487158832448825
+      }
+    }
+  },
+  "runtime_seconds": 1234.5703485000413,
+  "versions": {
+    "torch": "2.14.1+cu130",
+    "transformers": "5.18.0"
+  }
+}
