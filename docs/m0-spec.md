@@ -15,7 +15,7 @@ M0 measures the **untrained** model before any GRPO training: how accurate it is
 | Generation | Hugging Face `generate`, batched, **left padding** | simple; vLLM comes later with the training loop |
 | Seed | 0 (CLI flag) | |
 
-> **Override every sampling parameter explicitly.** `Qwen2.5-Instruct`'s `generation_config.json` defaults to temperature 0.7, top-p 0.8, top-k 20 and repetition penalty 1.05. Relying on defaults would silently measure a different distribution from the one GRPO trains on. Record the settings actually passed to `generate` in `summary.json`.
+> **Override every sampling parameter explicitly.** `Qwen2.5-0.5B-Instruct`'s `generation_config.json` defaults to temperature 0.7, top-p 0.8, top-k 20 and repetition penalty 1.1 (defaults differ between model sizes). Relying on defaults would silently measure a different distribution from the one GRPO trains on. Record the settings actually passed to `generate` in `summary.json`.
 
 ## Metrics
 
