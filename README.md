@@ -6,33 +6,41 @@ GRPO and DAPO for math reasoning on Qwen2.5-Instruct, implemented in PyTorch + T
 
 ## Plan
 
-1. Rule-based reward and evaluation (pass@k) on GSM8K
-2. Vanilla GRPO: rollouts, group-relative advantages, clipped policy loss, KL
-3. Training diagnostics: entropy, KL, response length, zero-variance groups, clip fraction
-4. DAPO techniques as independent switches: Clip-Higher, Dynamic Sampling, Token-level Loss, Overlong Reward Shaping
-5. Ablations across seeds, including Clip-Higher's effect as a function of updates per rollout
+1. ✅ Rule-based reward: exact answer checking (`docs/reward-spec.md`)
+2. ✅ Baseline evaluation on GSM8K: accuracy, pass@k, format, truncation, group statistics (`docs/m0-spec.md`)
+3. GRPO core and first training run: LoRA policy, log-probs, group-relative advantages, clipped loss, KL, training loop
+4. Training diagnostics; run vanilla GRPO until it fails
+5. Difficulty-graded data: per-question solve rates, MATH support
+6. DAPO techniques as independent switches: Clip-Higher, Dynamic Sampling, Token-level Loss, Overlong Reward Shaping
+7. Ablations across seeds, including Clip-Higher's effect as a function of updates per rollout
 
 ## Layout
 
-Modules are added with the milestone that needs them. Pure logic (parsing, metrics, loss math) is kept separate from I/O so it can be tested offline.
+Modules are added in the step that needs them. All logic lives in the package, where it can be imported and tested offline; `scripts/` holds thin entry points.
 
 ```text
 src/grpo_dapo/
-├── reward.py         ✅  rule-based reward: last \boxed{}, exact numeric equality
-├── data.py           ✅  load and validate datasets (difficulty buckets in M2, MATH in R5)
-├── prompts.py        ✅  system prompt and chat messages, shared by evaluation and training
-├── generation.py     ✅  batched sampling (Hugging Face generate; vLLM later)
-├── metrics.py        ✅  pass@k, group statistics, evaluation summaries
-├── eval_baseline.py  ✅  M0 baseline evaluation CLI
-├── config.py         M3  training hyperparameters and ablation presets
-├── logprobs.py       M3  per-token log-probabilities with masks
-├── advantage.py      M3  group-relative advantages (+ dynamic sampling in M5)
-├── loss.py           M3  clipped objective, KL, loss averaging (+ Clip-Higher, token-level in M5)
-├── train.py          M3  rollout → reward → advantage → update loop
-└── diagnostics.py    M4  entropy, KL, clip fractions, zero-variance share, lengths
+├── reward.py         step 1 ✅  rule-based reward: last \boxed{}, exact numeric equality
+├── data.py           step 2 ✅  load and validate datasets (difficulty buckets and MATH in step 5)
+├── prompts.py        step 2 ✅  system prompt and chat messages, shared by evaluation and training
+├── generation.py     step 2 ✅  batched sampling (Hugging Face generate; vLLM later)
+├── metrics.py        step 2 ✅  pass@k, group statistics, evaluation summaries
+├── eval_baseline.py  step 2 ✅  baseline evaluation CLI (becomes a thin script in step 3)
+├── evaluation.py     step 3     scoring and metrics shared by baseline and in-training evaluation
+├── policy.py         step 3     LoRA policy: generate, log-probs, reference log-probs (adapter disabled)
+├── logprobs.py       step 3     per-token log-probabilities with masks
+├── advantage.py      step 3     group-relative advantages (+ dynamic sampling in step 6)
+├── loss.py           step 3     clipped objective, KL, loss averaging (+ Clip-Higher, token-level in step 6)
+├── config.py         step 3     training hyperparameters and ablation presets
+├── trainer.py        step 3     rollout → reward → advantage → update loop
+└── diagnostics.py    step 4     entropy, KL, clip fractions, zero-variance share, lengths
+scripts/
+├── eval_baseline.py  step 3     baseline evaluation entry point
+├── train.py          step 3     training entry point
+└── run_ablations.sh  step 7     launches the ablation runs
 ```
 
-Specs for each milestone are in `docs/`. Run artifacts (completions, checkpoints) are written to `outputs/`, which is git-ignored; result summaries worth keeping are copied into `results/`.
+Specs for each step are in `docs/`. Run artifacts (completions, checkpoints) are written to `outputs/`, which is git-ignored; result summaries worth keeping are copied into `results/`.
 
 ## Development
 

@@ -147,7 +147,7 @@ def test_extract_answer_is_linear_time() -> None:
         pytest.param(r"1\,000", 1000),
         # Unicode minus sign (U+2212) is a minus, not something to skip.
         pytest.param("\u22123", -3),
-        # Fractions are out of scope until MATH (R5).
+        # Fractions are out of scope until MATH is added (Step 5).
         pytest.param("1/2", None),
         # None-like text does not raise.
         pytest.param("None", None),

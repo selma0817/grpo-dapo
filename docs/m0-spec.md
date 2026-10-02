@@ -1,6 +1,8 @@
-# M0 spec: baseline evaluation on GSM8K
+# Step 2 spec: baseline evaluation on GSM8K
 
-M0 measures the **untrained** model before any GRPO training: how accurate it is, whether it uses the `\boxed{}` format, how often it runs out of tokens, and, most importantly, **how many questions would give GRPO a learning signal** (groups whose answers are neither all correct nor all wrong). The per-question success rates computed here are reused later for difficulty buckets (M2).
+(File name kept from the original milestone label, M0.)
+
+The baseline evaluation measures the **untrained** model before any GRPO training: how accurate it is, whether it uses the `\boxed{}` format, how often it runs out of tokens, and, most importantly, **how many questions would give GRPO a learning signal** (groups whose answers are neither all correct nor all wrong). The per-question success rates computed here are reused later for difficulty buckets (Step 5).
 
 ## Settings
 

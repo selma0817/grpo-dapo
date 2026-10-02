@@ -1,4 +1,4 @@
-"""Offline tests for M0 evaluation metrics."""
+"""Offline tests for baseline evaluation metrics."""
 
 import pytest
 

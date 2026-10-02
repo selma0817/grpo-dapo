@@ -18,7 +18,7 @@ Smaller defaults (change any of them, but update the tests to match):
 - `extract_answer` returns the box content **stripped of surrounding whitespace**, and returns `None` for an empty box, no box, or an unclosed box (output cut off at the length limit).
 - `extract_answer` matches **balanced braces**, so `\boxed{\text{18}}` gives `\text{18}`, not `\text{18`.
 - `parse_number` ignores `$`, `\$`, `%`, thousands commas, whitespace and non-numeric text, then requires **exactly one number**: zero numbers or two or more numbers give `None`.
-- Fractions (`1/2`, `\frac{1}{2}`) and scientific notation are **out of scope until the MATH dataset is added (R5)**; `parse_number` returns `None` for them for now. GSM8K gold answers are integers by design, so this only affects rare cases like `\frac{144}{2}`. For MATH, `is_equivalent` will try the exact numeric check first and fall back to `math-verify`.
+- Fractions (`1/2`, `\frac{1}{2}`) and scientific notation are **out of scope until the MATH dataset is added (Step 5)**; `parse_number` returns `None` for them for now. GSM8K gold answers are integers by design, so this only affects rare cases like `\frac{144}{2}`. For MATH, `is_equivalent` will try the exact numeric check first and fall back to `math-verify`.
 - `parse_number` returns a `fractions.Fraction`, never a `float`, so equality is exact (D4). A test checks the type, since `18.0 == 18` would let a float implementation pass every value check.
 
 ## Functions (all in `src/grpo_dapo/reward.py`)
@@ -104,7 +104,7 @@ Timing check: `extract_answer` on the 10,000 unclosed braces finishes in under 1
 | `"1{,}000"` | `1000` | LaTeX `{,}` separator |
 | `"1\,000"` | `1000` | LaTeX thin space as a thousands separator |
 | `"−3"` (U+2212) | `-3` | Unicode minus sign |
-| `"1/2"` | `None` | fractions out of scope until MATH (R5) |
+| `"1/2"` | `None` | fractions out of scope until MATH (Step 5) |
 | `"None"` | `None` | `None`-like text does not raise |
 | `None` | `None` | non-string input fails closed |
 | odd Unicode text | `None` | unusual characters do not raise |
@@ -157,7 +157,7 @@ Type check: `parse_number("72")`, `parse_number("2.50")` and `parse_number("1,00
 
 For whoever implements `src/grpo_dapo/reward.py`:
 
-- **Standard library only** (`re`, `fractions`). No `math-verify` until MATH (R5).
+- **Standard library only** (`re`, `fractions`). No `math-verify` until MATH (Step 5).
 - **Explicit checks, not a catch-all.** Fail closed (D5) with `isinstance` / `None` checks. Don't wrap functions in `try/except Exception: return 0.0`: that would also hide bugs in the reward itself (a typo would silently make every reward 0.0). If a last-resort catch-all is added anywhere, it must log what it caught.
 - **`extract_answer` runs in linear time without recursion.** Use one left-to-right pass with a stack of open-brace positions. Scanning forward from every `\boxed{` is quadratic and far too slow for 10,000 unclosed braces (a test enforces a time limit).
 - **The last *complete* box wins.** In `\boxed{70} then \boxed{7` (the final box was cut off), the answer is `"70"`. Only a completion with no complete box at all gives `None`.
