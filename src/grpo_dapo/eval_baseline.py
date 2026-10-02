@@ -193,6 +193,7 @@ def main() -> None:
             top_p=1.0,
             max_new_tokens=args.max_new_tokens,
             batch_size=args.batch_size,
+            desc="Greedy",
         )
         greedy_records = _score_completions(examples, greedy_completions)
         _write_jsonl(output_dir / "completions_greedy.jsonl", greedy_records)
@@ -219,6 +220,7 @@ def main() -> None:
         top_p=args.top_p,
         max_new_tokens=args.max_new_tokens,
         batch_size=args.batch_size,
+        desc="Sampled",
     )
     sampled_records = _score_completions(examples, sampled_completions)
     _write_jsonl(output_dir / "completions_sampled.jsonl", sampled_records)

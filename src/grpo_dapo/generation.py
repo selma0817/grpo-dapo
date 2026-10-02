@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import torch
+from tqdm.auto import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
@@ -75,6 +76,7 @@ def generate(
     top_p: float,
     max_new_tokens: int,
     batch_size: int,
+    desc: str | None = None,
 ) -> list[list[Completion]]:
     """Generate completions in batches, grouped by input prompt order."""
     if num_samples <= 0:
@@ -94,7 +96,8 @@ def generate(
         raise ValueError("tokenizer has no pad token id")
 
     grouped: list[list[Completion]] = []
-    for batch_start in range(0, len(prompts), batch_size):
+    batch_starts = range(0, len(prompts), batch_size)
+    for batch_start in tqdm(batch_starts, desc=desc, unit="batch"):
         prompt_batch = prompts[batch_start : batch_start + batch_size]
         rendered_prompts = [
             tokenizer.apply_chat_template(
