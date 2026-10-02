@@ -1,0 +1,67 @@
+{
+  "model": "Qwen/Qwen2.5-0.5B-Instruct",
+  "dataset": "openai/gsm8k",
+  "split": "test",
+  "num_questions": 200,
+  "system_prompt": "Please reason step by step, and put your final answer within \\boxed{}.",
+  "seed": 0,
+  "generation_settings": {
+    "sampled": {
+      "do_sample": true,
+      "temperature": 1.0,
+      "top_p": 1.0,
+      "top_k": 0,
+      "repetition_penalty": 1.0,
+      "max_new_tokens": 1024,
+      "num_return_sequences": 8,
+      "eos_token_id": [
+        151645,
+        151643
+      ],
+      "pad_token_id": 151643,
+      "batch_size": 32
+    }
+  },
+  "metrics": {
+    "sampled": {
+      "accuracy": 0.320625,
+      "format_rate": 0.843125,
+      "unparseable_rate": 0.009375,
+      "truncation_rate": 0.0025,
+      "response_length": {
+        "mean": 332.28,
+        "median": 299.0,
+        "p90": 520.0,
+        "max": 1024
+      },
+      "pass_at_k": {
+        "1": 0.320625,
+        "2": 0.4610714285714285,
+        "4": 0.5937142857142857,
+        "8": 0.7
+      },
+      "group_stats": {
+        "all_correct_rate": 0.045,
+        "all_wrong_rate": 0.3,
+        "mixed_rate": 0.655,
+        "histogram": {
+          "0": 60,
+          "1": 30,
+          "2": 21,
+          "3": 21,
+          "4": 18,
+          "5": 22,
+          "6": 9,
+          "7": 10,
+          "8": 9
+        },
+        "mean_p_one_minus_p": 0.122890625
+      }
+    }
+  },
+  "runtime_seconds": 399.1720436180476,
+  "versions": {
+    "torch": "2.14.1+cu130",
+    "transformers": "5.18.0"
+  }
+}
