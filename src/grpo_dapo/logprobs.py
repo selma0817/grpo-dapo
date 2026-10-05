@@ -16,8 +16,10 @@ def token_log_probs(logits: Tensor, input_ids: Tensor) -> Tensor:
 
 def token_entropy(logits: Tensor) -> Tensor:
     """Return entropy for each next-token distribution."""
-    raise NotImplementedError
-
+    # logits [B, T, V]
+    relevant_logits = logits[:, :-1, :].to(torch.float32)  # [B, T-1, V]
+    entropy = torch.logsumexp(relevant_logits, dim=-1) - torch.sum(torch.softmax(relevant_logits, dim=-1) * relevant_logits, dim=-1)
+    return entropy
 
 def completion_mask(
     prompt_lengths: Tensor,
