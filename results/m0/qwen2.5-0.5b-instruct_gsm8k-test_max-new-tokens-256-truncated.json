@@ -1,0 +1,101 @@
+{
+  "model": "Qwen/Qwen2.5-0.5B-Instruct",
+  "dataset": "openai/gsm8k",
+  "split": "test",
+  "num_questions": 1319,
+  "system_prompt": "Please reason step by step, and put your final answer within \\boxed{}.",
+  "seed": 0,
+  "generation_settings": {
+    "greedy": {
+      "do_sample": false,
+      "temperature": 1.0,
+      "top_p": 1.0,
+      "top_k": 0,
+      "repetition_penalty": 1.0,
+      "max_new_tokens": 256,
+      "num_return_sequences": 1,
+      "eos_token_id": [
+        151645,
+        151643
+      ],
+      "pad_token_id": 151643,
+      "batch_size": 32
+    },
+    "sampled": {
+      "do_sample": true,
+      "temperature": 1.0,
+      "top_p": 1.0,
+      "top_k": 0,
+      "repetition_penalty": 1.0,
+      "max_new_tokens": 256,
+      "num_return_sequences": 8,
+      "eos_token_id": [
+        151645,
+        151643
+      ],
+      "pad_token_id": 151643,
+      "batch_size": 32
+    }
+  },
+  "metrics": {
+    "greedy": {
+      "accuracy": 0.2304776345716452,
+      "format_rate": 0.33510235026535257,
+      "unparseable_rate": 0.000758150113722517,
+      "truncation_rate": 0.6732373009855952,
+      "response_length": {
+        "mean": 241.9666413949962,
+        "median": 256,
+        "p90": 256.0,
+        "max": 256
+      }
+    },
+    "sampled": {
+      "accuracy": 0.16091736163760426,
+      "format_rate": 0.2679112964366945,
+      "unparseable_rate": 0.001042456406368461,
+      "truncation_rate": 0.6811978771796816,
+      "response_length": {
+        "mean": 239.58055344958302,
+        "median": 256.0,
+        "p90": 256.0,
+        "max": 256
+      },
+      "pass_at_k": {
+        "1": 0.16091736163760426,
+        "2": 0.23724683201559624,
+        "4": 0.3164951803314199,
+        "8": 0.3949962092494314
+      },
+      "group_stats": {
+        "all_correct_rate": 0.013646702047005308,
+        "all_wrong_rate": 0.6050037907505686,
+        "mixed_rate": 0.3813495072024261,
+        "histogram": {
+          "0": 798,
+          "1": 160,
+          "2": 83,
+          "3": 69,
+          "4": 58,
+          "5": 41,
+          "6": 60,
+          "7": 32,
+          "8": 18
+        },
+        "mean_p_one_minus_p": 0.06678828658074298
+      }
+    }
+  },
+  "versions": {
+    "torch": "2.14.1+cu130",
+    "transformers": "5.18.0"
+  },
+  "derived_from": {
+    "source": "results/m0/qwen2.5-0.5b-instruct_gsm8k-test.json",
+    "method": "No new generation. Each completion from the 512-token M0 baseline run is cut to its first 256 tokens (decoded text re-tokenized with the model tokenizer) and re-scored with grpo_dapo.reward. Completions of <= 256 tokens are unchanged. Generation is autoregressive, so a prefix equals what a run with the smaller budget would have produced under the same sampling.",
+    "retokenization_length_mismatches": {
+      "greedy": "8/1319",
+      "sampled": "304/10552"
+    }
+  }
+}
