@@ -18,6 +18,7 @@ import wandb
 from grpo_dapo.config import Config
 from grpo_dapo.data import Example, load_gsm8k
 from grpo_dapo.evaluation import evaluate
+from grpo_dapo.loss import grpo_loss
 from grpo_dapo.policy import Policy
 from grpo_dapo.rollout import RolloutBatch, collect_rollout
 
@@ -38,7 +39,121 @@ def train_step(
     first update's maximum absolute log-ratio and clipping fraction; warn when
     that first log-ratio exceeds ``1e-4``.
     """
-    raise NotImplementedError
+    micro_batches = rollout.micro_batches
+    num_micro_batches = len(micro_batches)
+    if num_micro_batches == 0:
+        raise ValueError("rollout must contain at least one micro-batch")
+    if num_micro_batches % config.num_minibatches != 0:
+        raise ValueError("micro-batch count must be divisible by num_minibatches")
+
+    micro_batches_per_minibatch = num_micro_batches // config.num_minibatches
+    trainable_parameters = policy.trainable_parameters()
+
+    update_losses: list[float] = []
+    grad_norms: list[float] = []
+    clip_lows: list[float] = []
+    clip_highs: list[float] = []
+    clip_fractions: list[float] = []
+    ratio_means: list[float] = []
+    ratio_mins: list[float] = []
+    ratio_maxs: list[float] = []
+    kl_means: list[float] = []
+    first_update_max_abs_log_ratio = 0.0
+    first_update_clip_fractions: list[float] = []
+
+    for minibatch_index in range(config.num_minibatches):
+        start = minibatch_index * micro_batches_per_minibatch
+        stop = start + micro_batches_per_minibatch
+        minibatch = micro_batches[start:stop]
+
+        optimizer.zero_grad(set_to_none=True)
+        if config.aggregation == "sample":
+            denominator = float(
+                sum(micro_batch.advantages.numel() for micro_batch in minibatch)
+            )
+        else:
+            denominator = sum(
+                micro_batch.completion_mask.sum().item() for micro_batch in minibatch
+            )
+
+        minibatch_loss = 0.0
+        for micro_batch in minibatch:
+            if micro_batch.logp_old is None or micro_batch.logp_ref is None:
+                raise ValueError(
+                    "rollout micro-batches must include old and reference log-probabilities"
+                )
+
+            score_output = policy.score(micro_batch, with_grad=True, use_adapter=True)
+            micro_batch_loss, micro_batch_stats = grpo_loss(
+                logp_new=score_output.logp,
+                logp_old=micro_batch.logp_old,
+                advantages=micro_batch.advantages,
+                mask=micro_batch.completion_mask,
+                eps_low=config.eps_low,
+                eps_high=config.eps_high,
+                beta=config.beta,
+                logp_ref=micro_batch.logp_ref,
+                aggregation=config.aggregation,
+                denominator=denominator,
+            )
+
+            micro_batch_loss.backward()
+            minibatch_loss += micro_batch_loss.item()
+
+            clip_low = float(micro_batch_stats["clip_low_fraction"])
+            clip_high = float(micro_batch_stats["clip_high_fraction"])
+            clip_fraction = float(micro_batch_stats["clip_fraction"])
+            max_abs_log_ratio = float(micro_batch_stats["max_abs_log_ratio"])
+            kl_mean = micro_batch_stats["kl_mean"]
+            if kl_mean is None:
+                raise RuntimeError("reference log-probabilities must produce a KL metric")
+
+            clip_lows.append(clip_low)
+            clip_highs.append(clip_high)
+            clip_fractions.append(clip_fraction)
+            ratio_means.append(float(micro_batch_stats["ratio_mean"]))
+            ratio_mins.append(float(micro_batch_stats["ratio_min"]))
+            ratio_maxs.append(float(micro_batch_stats["ratio_max"]))
+            kl_means.append(kl_mean)
+
+            if minibatch_index == 0:
+                first_update_max_abs_log_ratio = max(
+                    first_update_max_abs_log_ratio,
+                    max_abs_log_ratio,
+                )
+                first_update_clip_fractions.append(clip_fraction)
+
+        grad_norm = torch.nn.utils.clip_grad_norm_(
+            trainable_parameters,
+            config.max_grad_norm,
+        )
+        grad_norms.append(grad_norm.item())
+        optimizer.step()
+        update_losses.append(minibatch_loss)
+
+    first_update_clip_fraction = sum(first_update_clip_fractions) / len(
+        first_update_clip_fractions
+    )
+    if first_update_max_abs_log_ratio > 1e-4:
+        print(
+            "Warning: first update max absolute log-ratio is "
+            f"{first_update_max_abs_log_ratio:.6g}",
+            file=sys.stderr,
+        )
+
+    return {
+        "loss": sum(update_losses) / len(update_losses),
+        "grad_norm": sum(grad_norms) / len(grad_norms),
+        "clip_low": sum(clip_lows) / len(clip_lows),
+        "clip_high": sum(clip_highs) / len(clip_highs),
+        "clip_fraction": sum(clip_fractions) / len(clip_fractions),
+        "ratio_mean": sum(ratio_means) / len(ratio_means),
+        "ratio_min": min(ratio_mins),
+        "ratio_max": max(ratio_maxs),
+        "kl_mean": sum(kl_means) / len(kl_means),
+        "first_update_max_abs_log_ratio": first_update_max_abs_log_ratio,
+        "first_update_clip_fraction": first_update_clip_fraction,
+    }
 
 
 def _select_device() -> torch.device:
