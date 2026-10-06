@@ -230,3 +230,44 @@ def test_microbatch_accumulation_matches_one_big_microbatch(aggregation: str) ->
 
     for name, value in updated[0].items():
         torch.testing.assert_close(updated[1][name], value, atol=1e-6, rtol=1e-5)
+
+
+def test_each_update_uses_only_its_own_minibatch_gradient() -> None:
+    # Two mini-batches in one call must equal two calls with one mini-batch each.
+    # Fails if gradients are not zeroed between updates (mini-batch 1 applied twice).
+    def config(num_minibatches: int) -> Config:
+        return Config(
+            gradient_checkpointing=False,
+            questions_per_step=1,
+            samples_per_question=2,
+            num_minibatches=num_minibatches,
+            micro_batch_size=1,
+            max_grad_norm=1e9,
+            wandb_mode="disabled",
+        )
+
+    one_call = _tiny_policy(config(2), seed=0)
+    batches = [
+        _scored_micro_batch(one_call, [row], [advantage])
+        for row, advantage in zip(ROWS[:2], ADVANTAGES[:2])
+    ]
+    train_step(
+        one_call,
+        torch.optim.SGD(one_call.trainable_parameters(), lr=1.0),
+        _rollout(batches),
+        config(2),
+    )
+
+    two_calls = _tiny_policy(config(1), seed=0)
+    batches = [
+        _scored_micro_batch(two_calls, [row], [advantage])
+        for row, advantage in zip(ROWS[:2], ADVANTAGES[:2])
+    ]
+    optimizer = torch.optim.SGD(two_calls.trainable_parameters(), lr=1.0)
+    for batch in batches:
+        train_step(two_calls, optimizer, _rollout([batch]), config(1))
+
+    expected = dict(two_calls.model.named_parameters())
+    for name, parameter in one_call.model.named_parameters():
+        if "lora_" in name:
+            torch.testing.assert_close(parameter, expected[name], atol=1e-6, rtol=1e-5)
