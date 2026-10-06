@@ -16,6 +16,8 @@ class Completion:
     text: str
     num_tokens: int
     truncated: bool
+    token_ids: tuple[int, ...]
+    prompt_token_ids: tuple[int, ...]
 
 
 def _eos_set(eos_ids: int | Iterable[int]) -> set[int]:
@@ -65,6 +67,30 @@ def load_model_and_tokenizer(name: str, device: str | torch.device) -> tuple[Any
     return model, tokenizer
 
 
+def build_generate_kwargs(
+    *,
+    num_samples: int,
+    do_sample: bool,
+    temperature: float,
+    top_p: float,
+    max_new_tokens: int,
+    eos_token_id: int | list[int],
+    pad_token_id: int,
+) -> dict[str, Any]:
+    """Build the exact keyword arguments passed to model generation."""
+    return {
+        "do_sample": do_sample,
+        "temperature": temperature,
+        "top_p": top_p,
+        "top_k": 0,
+        "repetition_penalty": 1.0,
+        "max_new_tokens": max_new_tokens,
+        "num_return_sequences": num_samples,
+        "eos_token_id": eos_token_id,
+        "pad_token_id": pad_token_id,
+    }
+
+
 def generate(
     model: Any,
     tokenizer: Any,
@@ -77,8 +103,8 @@ def generate(
     max_new_tokens: int,
     batch_size: int,
     desc: str | None = None,
-) -> list[list[Completion]]:
-    """Generate completions in batches, grouped by input prompt order."""
+) -> tuple[list[list[Completion]], dict[str, Any]]:
+    """Generate grouped completions and return the exact generation settings."""
     if num_samples <= 0:
         raise ValueError("num_samples must be positive")
     if batch_size <= 0:
@@ -94,6 +120,15 @@ def generate(
     pad_token_id = tokenizer.pad_token_id
     if pad_token_id is None:
         raise ValueError("tokenizer has no pad token id")
+    generate_kwargs = build_generate_kwargs(
+        num_samples=num_samples,
+        do_sample=do_sample,
+        temperature=temperature,
+        top_p=top_p,
+        max_new_tokens=max_new_tokens,
+        eos_token_id=eos_token_id,
+        pad_token_id=pad_token_id,
+    )
 
     grouped: list[list[Completion]] = []
     batch_starts = range(0, len(prompts), batch_size)
@@ -113,21 +148,18 @@ def generate(
             padding=True,
         )
         prompt_length = encoded["input_ids"].shape[1]
+        prompt_token_ids = [
+            tuple(
+                encoded["input_ids"][index][
+                    encoded["attention_mask"][index].bool()
+                ].tolist()
+            )
+            for index in range(len(prompt_batch))
+        ]
         encoded = {key: value.to(model.device) for key, value in encoded.items()}
 
         with torch.inference_mode():
-            output_ids = model.generate(
-                **encoded,
-                do_sample=do_sample,
-                temperature=temperature,
-                top_p=top_p,
-                top_k=0,
-                repetition_penalty=1.0,
-                max_new_tokens=max_new_tokens,
-                num_return_sequences=num_samples,
-                eos_token_id=eos_token_id,
-                pad_token_id=pad_token_id,
-            )
+            output_ids = model.generate(**encoded, **generate_kwargs)
 
         new_output_ids = output_ids[:, prompt_length:]
         for prompt_index in range(len(prompt_batch)):
@@ -135,17 +167,23 @@ def generate(
             for sample_index in range(num_samples):
                 row_index = prompt_index * num_samples + sample_index
                 token_ids = new_output_ids[row_index].tolist()
+                num_tokens = completion_length(token_ids, eos_ids)
+                kept_token_ids = tuple(token_ids[:num_tokens])
                 prompt_completions.append(
                     Completion(
-                        text=tokenizer.decode(token_ids, skip_special_tokens=True),
-                        num_tokens=completion_length(token_ids, eos_ids),
+                        text=tokenizer.decode(
+                            kept_token_ids, skip_special_tokens=True
+                        ),
+                        num_tokens=num_tokens,
                         truncated=is_truncated(
                             token_ids,
                             eos_ids,
                             max_new_tokens,
                         ),
+                        token_ids=kept_token_ids,
+                        prompt_token_ids=prompt_token_ids[prompt_index],
                     )
                 )
             grouped.append(prompt_completions)
 
-    return grouped
+    return grouped, generate_kwargs

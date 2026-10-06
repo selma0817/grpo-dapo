@@ -25,18 +25,18 @@ src/grpo_dapo/
 ├── prompts.py        step 2 ✅  system prompt and chat messages, shared by evaluation and training
 ├── generation.py     step 2 ✅  batched sampling (Hugging Face generate; vLLM later)
 ├── metrics.py        step 2 ✅  pass@k, group statistics, evaluation summaries
-├── eval_baseline.py  step 2 ✅  baseline evaluation CLI (becomes a thin script in step 3)
-├── evaluation.py     step 3     scoring and metrics shared by baseline and in-training evaluation
-├── policy.py         step 3     LoRA policy: generate, log-probs, reference log-probs (adapter disabled)
+├── evaluation.py     step 3 ✅  scoring and metrics shared by baseline and in-training evaluation
+├── policy.py         step 3 ✅  LoRA policy: generate, log-probs, reference log-probs (adapter disabled)
 ├── logprobs.py       step 3     per-token log-probabilities with masks
 ├── advantage.py      step 3     group-relative advantages (+ dynamic sampling in step 6)
 ├── loss.py           step 3     clipped objective, KL, loss averaging (+ Clip-Higher, token-level in step 6)
-├── config.py         step 3     training hyperparameters and ablation presets
-├── trainer.py        step 3     rollout → reward → advantage → update loop
+├── config.py         step 3 ✅  training hyperparameters and ablation presets
+├── rollout.py        step 3 ✅  rollout → reward → advantage → fixed micro-batches
+├── trainer.py        step 3     training orchestration (`train_step` is the hand-written stub)
 └── diagnostics.py    step 4     entropy, KL, clip fractions, zero-variance share, lengths
 scripts/
-├── eval_baseline.py  step 3     baseline evaluation entry point
-├── train.py          step 3     training entry point
+├── eval_baseline.py  step 3 ✅  baseline evaluation entry point
+├── train.py          step 3 ✅  training entry point
 └── run_ablations.sh  step 7     launches the ablation runs
 ```
 
@@ -47,6 +47,24 @@ Specs for each step are in `docs/`. Run artifacts (completions, checkpoints) are
 ```bash
 uv sync
 uv run pytest
+```
+
+Run the baseline evaluation:
+
+```bash
+uv run python scripts/eval_baseline.py
+```
+
+Run a two-step local smoke test:
+
+```bash
+uv run python scripts/train.py --preset vanilla --max-steps 2 --questions-per-step 2 --samples-per-question 4 --num-minibatches 2 --micro-batch-size 4 --eval-questions 4 --eval-samples 2 --no-final-eval --wandb-mode disabled
+```
+
+Start the first full vanilla GRPO run:
+
+```bash
+uv run python scripts/train.py --preset vanilla
 ```
 
 ## References

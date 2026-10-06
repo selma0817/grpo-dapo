@@ -1,8 +1,11 @@
 """Offline tests for generation token accounting."""
 
-import pytest
+from types import SimpleNamespace
 
-from grpo_dapo.generation import completion_length, is_truncated
+import pytest
+import torch
+
+from grpo_dapo.generation import completion_length, generate, is_truncated
 
 
 @pytest.mark.parametrize(
@@ -25,3 +28,61 @@ def test_completion_accounting(
 ) -> None:
     assert completion_length(token_ids, {2}) == expected_length
     assert is_truncated(token_ids, {2}, max_new_tokens=5) is expected_truncated
+
+
+class _FakeTokenizer:
+    pad_token_id = 0
+    eos_token_id = 2
+
+    def apply_chat_template(self, messages, **kwargs):
+        return messages[-1]["content"]
+
+    def __call__(self, texts, **kwargs):
+        del texts, kwargs
+        return {
+            "input_ids": torch.tensor([[0, 11, 12], [21, 22, 23]]),
+            "attention_mask": torch.tensor([[0, 1, 1], [1, 1, 1]]),
+        }
+
+    def decode(self, token_ids, **kwargs):
+        del kwargs
+        return " ".join(str(token_id) for token_id in token_ids)
+
+
+class _FakeModel:
+    device = torch.device("cpu")
+    generation_config = SimpleNamespace(eos_token_id=2)
+
+    def __init__(self) -> None:
+        self.kwargs = None
+
+    def generate(self, input_ids, attention_mask, **kwargs):
+        del attention_mask
+        self.kwargs = kwargs
+        prefixes = input_ids.repeat_interleave(2, dim=0)
+        suffixes = torch.tensor(
+            [[31, 2, 0], [32, 2, 0], [41, 2, 0], [42, 2, 0]]
+        )
+        return torch.cat((prefixes, suffixes), dim=1)
+
+
+def test_generate_preserves_token_ids_and_returns_exact_kwargs() -> None:
+    model = _FakeModel()
+    groups, settings = generate(
+        model,
+        _FakeTokenizer(),
+        [[{"role": "user", "content": "a"}], [{"role": "user", "content": "b"}]],
+        num_samples=2,
+        do_sample=True,
+        temperature=1.0,
+        top_p=1.0,
+        max_new_tokens=3,
+        batch_size=2,
+    )
+
+    assert settings == model.kwargs
+    assert groups[0][0].prompt_token_ids == (11, 12)
+    assert groups[1][0].prompt_token_ids == (21, 22, 23)
+    assert groups[0][0].token_ids == (31, 2)
+    assert groups[0][0].num_tokens == 2
+    assert groups[0][0].truncated is False
