@@ -1,0 +1,65 @@
+{
+  "config": {
+    "model_name": "Qwen/Qwen2.5-0.5B-Instruct",
+    "gradient_checkpointing": true,
+    "lora_r": 16,
+    "lora_alpha": 32,
+    "lora_dropout": 0.0,
+    "lora_target_modules": [
+      "q_proj",
+      "k_proj",
+      "v_proj",
+      "o_proj",
+      "gate_proj",
+      "up_proj",
+      "down_proj"
+    ],
+    "eps_low": 0.2,
+    "eps_high": 0.2,
+    "beta": 0.0,
+    "aggregation": "sample",
+    "questions_per_step": 32,
+    "samples_per_question": 8,
+    "temperature": 1.0,
+    "top_p": 1.0,
+    "max_new_tokens": 512,
+    "max_prompt_tokens": 512,
+    "generation_batch_size": 32,
+    "num_minibatches": 4,
+    "micro_batch_size": 4,
+    "learning_rate": 1e-05,
+    "max_grad_norm": 1.0,
+    "max_steps": 100,
+    "seed": 0,
+    "run_name": "vanilla_s0_20261006_154502",
+    "output_dir": "outputs/train",
+    "eval_every": 10,
+    "eval_questions": 200,
+    "eval_samples": 4,
+    "eval_seed": 1234,
+    "final_eval": true,
+    "save_every": 25,
+    "log_samples_every": 10,
+    "logged_sample_groups": 2,
+    "wandb_mode": "online",
+    "wandb_project": "grpo-dapo"
+  },
+  "git": {
+    "commit": "0a78f2a4aba486dc0a084287feab1ab2048fa169",
+    "dirty": false
+  },
+  "versions": {
+    "torch": "2.14.1+cu130",
+    "transformers": "5.18.0",
+    "peft": "0.21.2"
+  },
+  "gpu": "NVIDIA GeForce RTX 4070 Ti SUPER",
+  "command": [
+    "scripts/train.py",
+    "--preset",
+    "vanilla",
+    "--micro-batch-size",
+    "4"
+  ],
+  "start_time": "2026-10-06T19:45:02.369551+00:00"
+}
