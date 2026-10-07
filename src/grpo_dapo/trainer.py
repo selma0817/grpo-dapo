@@ -289,6 +289,7 @@ def _step_metrics(
         "groups/all_correct": stats["all_correct"],
         "groups/all_wrong": stats["all_wrong"],
         "groups/mixed": stats["mixed"],
+        "groups/nonzero_variance": stats["nonzero_variance"],
         "length/mean": stats["mean_completion_length"],
         "length/max": stats["max_completion_length"],
         "length/truncation_rate": stats["truncation_rate"],

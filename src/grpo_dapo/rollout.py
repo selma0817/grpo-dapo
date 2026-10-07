@@ -139,13 +139,24 @@ def collect_rollout(
         batch_size=config.generation_batch_size,
     )
 
-    rewards = torch.tensor(
+    correct = torch.tensor(
         [
             [compute_reward(completion.text, example.gold) for completion in group]
             for example, group in zip(examples, completions, strict=True)
         ],
         dtype=torch.float32,
     )
+    extracted = [
+        [extract_answer(completion.text) for completion in group]
+        for group in completions
+    ]
+    boxed = torch.tensor(
+        [[answer is not None for answer in group] for group in extracted],
+        dtype=torch.float32,
+    )
+    # Optional format bonus (rayyy's format_weight): a complete box earns
+    # format_weight even when the answer is wrong. 0 keeps the 0/1 reward.
+    rewards = correct + config.format_weight * boxed
     advantages = group_advantages(rewards)
     zero_variance = zero_variance_groups(rewards)
     prompt_ids = [group[0].prompt_token_ids for group in completions]
@@ -187,8 +198,8 @@ def collect_rollout(
     score_seconds = time.perf_counter() - score_started
 
     flat_completions = [completion for group in completions for completion in group]
-    extracted = [extract_answer(completion.text) for completion in flat_completions]
-    correct_counts = rewards.sum(dim=1)
+    flat_extracted = [answer for group in extracted for answer in group]
+    correct_counts = correct.sum(dim=1)
     entropy_sum = sum(
         float((micro_batch.entropy * micro_batch.completion_mask).sum().item())
         for micro_batch in micro_batches
@@ -201,12 +212,11 @@ def collect_rollout(
     lengths = [completion.num_tokens for completion in flat_completions]
     stats = {
         "reward_mean": float(rewards.mean().item()),
-        "accuracy": float(rewards.mean().item()),
-        "format_rate": sum(answer is not None for answer in extracted)
-        / len(flat_completions),
+        "accuracy": float(correct.mean().item()),
+        "format_rate": float(boxed.mean().item()),
         "unparseable_rate": sum(
             answer is not None and parse_number(answer) is None
-            for answer in extracted
+            for answer in flat_extracted
         )
         / len(flat_completions),
         "all_correct": float(
@@ -222,6 +232,7 @@ def collect_rollout(
             .mean()
             .item()
         ),
+        "nonzero_variance": float((~zero_variance).float().mean().item()),
         "mean_completion_length": statistics.fmean(lengths),
         "max_completion_length": float(max(lengths)),
         "truncation_rate": sum(

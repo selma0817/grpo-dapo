@@ -54,6 +54,7 @@ def test_bool_and_tuple_flags() -> None:
         {"eps_low": -0.1},
         {"eps_high": -0.1},
         {"beta": -0.1},
+        {"format_weight": -0.1},
         {"wandb_mode": "sometimes"},
     ],
 )

@@ -30,6 +30,7 @@ class Config:
     eps_high: float = 0.2
     beta: float = 0.0
     aggregation: str = "sample"
+    format_weight: float = 0.0
 
     questions_per_step: int = 32
     samples_per_question: int = 8
@@ -77,6 +78,8 @@ class Config:
             raise ValueError("mini-batch size must divide into micro_batch_size")
         if self.eps_low < 0 or self.eps_high < 0 or self.beta < 0:
             raise ValueError("eps_low, eps_high, and beta must be non-negative")
+        if self.format_weight < 0:
+            raise ValueError("format_weight must be non-negative")
         if self.wandb_mode not in {"online", "offline", "disabled"}:
             raise ValueError("wandb_mode must be online, offline, or disabled")
         if self.run_name is None:

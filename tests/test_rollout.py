@@ -1,5 +1,6 @@
 """Tests for deterministic right-padded rollout partitions."""
 
+import pytest
 import torch
 
 from grpo_dapo.rollout import build_micro_batches
@@ -81,3 +82,66 @@ def test_collect_rollout_rejects_prompts_longer_than_the_limit() -> None:
 
     with pytest.raises(ValueError, match="max_prompt_tokens"):
         collect_rollout(_LongPromptPolicy(), examples, config, torch.Generator())
+
+
+class _FixedPolicy:
+    """Returns one boxed-but-wrong and one unboxed completion per question."""
+
+    device = torch.device("cpu")
+
+    class tokenizer:
+        pad_token_id = 0
+
+    def generate(self, prompts, *, num_samples, **kwargs):
+        from grpo_dapo.generation import Completion
+
+        texts = [r"so \boxed{2}", "the answer is 1"]
+        return [
+            [Completion(text, 2, False, (5, 2), (3, 4)) for text in texts]
+            for _ in prompts
+        ]
+
+    def score(self, micro_batch, *, with_grad, use_adapter=True, return_entropy=False):
+        from grpo_dapo.policy import ScoreOutput
+
+        zeros = torch.zeros(micro_batch.completion_mask.shape)
+        return ScoreOutput(logp=zeros, entropy=zeros if return_entropy else None)
+
+
+def _fixed_rollout(format_weight: float):
+    from fractions import Fraction
+
+    from grpo_dapo.config import Config
+    from grpo_dapo.data import Example
+    from grpo_dapo.rollout import collect_rollout
+
+    config = Config(
+        questions_per_step=1,
+        samples_per_question=2,
+        num_minibatches=1,
+        micro_batch_size=2,
+        format_weight=format_weight,
+    )
+    examples = [Example(0, "q", "1", Fraction(1))]
+    return collect_rollout(_FixedPolicy(), examples, config, torch.Generator())
+
+
+def test_format_weight_zero_keeps_the_correctness_reward() -> None:
+    rollout = _fixed_rollout(0.0)
+
+    assert rollout.rewards.tolist() == [[0.0, 0.0]]
+    assert rollout.zero_variance.tolist() == [True]
+    assert rollout.stats["nonzero_variance"] == 0.0
+
+
+def test_format_weight_rewards_a_wrong_box_and_creates_signal() -> None:
+    rollout = _fixed_rollout(0.2)
+
+    assert rollout.rewards.tolist() == [[pytest.approx(0.2), 0.0]]
+    assert rollout.zero_variance.tolist() == [False]
+    assert rollout.advantages[0, 0] > 0 > rollout.advantages[0, 1]
+    assert rollout.stats["reward_mean"] == pytest.approx(0.1)
+    assert rollout.stats["accuracy"] == 0.0
+    assert rollout.stats["format_rate"] == 0.5
+    assert rollout.stats["all_wrong"] == 1.0
+    assert rollout.stats["nonzero_variance"] == 1.0
