@@ -418,3 +418,10 @@ def test_dynamic_selection_tops_up_filtered_groups_in_generation_order() -> None
     assert padding.tolist() == [True, True]
     assert informative == 0
     assert topped_up == 2
+
+
+def test_train_refuses_overlong_filter_until_train_step_supports_it() -> None:
+    import pytest
+
+    with pytest.raises(NotImplementedError, match="overlong_filter"):
+        trainer.train(Config(overlong_filter=True, wandb_mode="disabled"))

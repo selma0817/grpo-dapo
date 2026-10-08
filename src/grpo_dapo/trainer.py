@@ -73,8 +73,9 @@ def train_step(
         minibatch = micro_batches[start:stop]
 
         optimizer.zero_grad(set_to_none=True)
-        # TODO(step6): use loss_mask for the denominator and grpo_loss mask,
-        # skip all-masked mini-batches, and return skipped_minibatches.
+        # TODO(step6, optional): overlong_filter needs loss_mask here (mask and
+        # both denominators) and a skip for all-masked mini-batches; train()
+        # refuses the switch until then.
         if config.aggregation == "sample":
             denominator = float(
                 sum(micro_batch.advantages.numel() for micro_batch in minibatch)
@@ -400,6 +401,12 @@ def train(
     eval_examples: Sequence[Example] | None = None,
 ) -> Path:
     """Train a policy and write all run artifacts under its output directory."""
+    if config.overlong_filter:
+        # train_step still passes completion_mask, so the switch would silently
+        # do nothing. Refuse it until train_step uses loss_mask.
+        raise NotImplementedError(
+            "overlong_filter is not supported yet: train_step does not use loss_mask"
+        )
     random.seed(config.seed)
     torch.manual_seed(config.seed)
     if torch.cuda.is_available():
