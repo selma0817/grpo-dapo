@@ -92,3 +92,27 @@ def compute_reward(completion: str | None, gold: str | None) -> float:
     """Return one for an equivalent boxed answer and zero otherwise."""
     answer = extract_answer(completion)
     return 1.0 if is_equivalent(answer, gold) else 0.0
+
+
+def overlong_penalty(
+    num_tokens: int,
+    truncated: bool,
+    max_new_tokens: int,
+    cache: int,
+) -> float:
+    """Return DAPO's soft overlong penalty in the range ``[-1, 0]``."""
+    if cache < 0:
+        raise ValueError("cache must be non-negative")
+    if cache >= max_new_tokens:
+        raise ValueError("cache must be less than max_new_tokens")
+    if num_tokens < 0:
+        raise ValueError("num_tokens must be non-negative")
+    if cache == 0:
+        return 0.0
+    if truncated:
+        return -1.0
+
+    safe_length = max_new_tokens - cache
+    if num_tokens <= safe_length:
+        return 0.0
+    return -(num_tokens - safe_length) / cache

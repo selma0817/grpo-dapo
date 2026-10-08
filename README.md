@@ -67,6 +67,10 @@ Start the first full vanilla GRPO run:
 uv run python scripts/train.py --preset vanilla
 ```
 
+Available presets are `vanilla`, `vanilla_kl`, `clip_higher`, `token_level`,
+`dynamic_sampling`, `overlong`, and `dapo`. The `dapo` preset combines
+Clip-Higher, token-level loss, Dynamic Sampling, and overlong reward shaping.
+
 ## References
 
 - Shao et al., *DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models* (GRPO), arXiv:2402.03300

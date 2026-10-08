@@ -20,7 +20,13 @@ from grpo_dapo.data import Example, load_gsm8k
 from grpo_dapo.evaluation import evaluate
 from grpo_dapo.loss import grpo_loss
 from grpo_dapo.policy import Policy
-from grpo_dapo.rollout import RolloutBatch, collect_rollout
+from grpo_dapo.rollout import (
+    GroupBatch,
+    RolloutBatch,
+    build_rollout,
+    generate_groups,
+    quality_stats,
+)
 
 
 def train_step(
@@ -67,6 +73,8 @@ def train_step(
         minibatch = micro_batches[start:stop]
 
         optimizer.zero_grad(set_to_none=True)
+        # TODO(step6): use loss_mask for the denominator and grpo_loss mask,
+        # skip all-masked mini-batches, and return skipped_minibatches.
         if config.aggregation == "sample":
             denominator = float(
                 sum(micro_batch.advantages.numel() for micro_batch in minibatch)
@@ -272,7 +280,16 @@ def _step_metrics(
     step_seconds: float,
     samples_total: int,
     tokens_total: int,
+    questions_total: int,
+    quality_stats: dict[str, float],
+    dynamic_rounds: int,
+    questions_generated: int,
+    informative_groups: int,
+    topped_up_groups: int,
+    kept_accuracy: float,
+    overlong_masked_rate: float,
 ) -> dict[str, float | int]:
+    """Build step metrics; policy entropy covers only the trained batch."""
     stats = rollout.stats
     peak_memory = (
         torch.cuda.max_memory_allocated() / 1024**3
@@ -282,17 +299,26 @@ def _step_metrics(
     return {
         "step": step,
         "epoch": epoch,
-        "reward/mean": stats["reward_mean"],
-        "reward/accuracy": stats["accuracy"],
-        "reward/format_rate": stats["format_rate"],
-        "reward/unparseable_rate": stats["unparseable_rate"],
-        "groups/all_correct": stats["all_correct"],
-        "groups/all_wrong": stats["all_wrong"],
-        "groups/mixed": stats["mixed"],
-        "groups/nonzero_variance": stats["nonzero_variance"],
-        "length/mean": stats["mean_completion_length"],
-        "length/max": stats["max_completion_length"],
-        "length/truncation_rate": stats["truncation_rate"],
+        "reward/mean": quality_stats["reward_mean"],
+        "reward/accuracy": quality_stats["accuracy"],
+        "reward/format_rate": quality_stats["format_rate"],
+        "reward/unparseable_rate": quality_stats["unparseable_rate"],
+        "reward/overlong_penalty_mean": quality_stats[
+            "overlong_penalty_mean"
+        ],
+        "groups/all_correct": quality_stats["all_correct"],
+        "groups/all_wrong": quality_stats["all_wrong"],
+        "groups/mixed": quality_stats["mixed"],
+        "groups/nonzero_variance": quality_stats["nonzero_variance"],
+        "length/mean": quality_stats["mean_completion_length"],
+        "length/max": quality_stats["max_completion_length"],
+        "length/truncation_rate": quality_stats["truncation_rate"],
+        "dynamic/rounds": dynamic_rounds,
+        "dynamic/questions_generated": questions_generated,
+        "dynamic/keep_rate": informative_groups / questions_generated,
+        "dynamic/topped_up_groups": topped_up_groups,
+        "dynamic/kept_accuracy": kept_accuracy,
+        "overlong/masked_rate": overlong_masked_rate,
         "policy/entropy": stats["mean_entropy"],
         "policy/kl_mean": update["kl_mean"],
         "clip/low": update["clip_low"],
@@ -309,6 +335,7 @@ def _step_metrics(
         ],
         "optim/loss": update["loss"],
         "optim/grad_norm": update["grad_norm"],
+        "optim/skipped_minibatches": update.get("skipped_minibatches", 0.0),
         "optim/lr": float(optimizer.param_groups[0]["lr"]),
         "cost/rollout_seconds": rollout_seconds,
         "cost/score_seconds": stats["score_seconds"],
@@ -316,8 +343,53 @@ def _step_metrics(
         "cost/step_seconds": step_seconds,
         "cost/samples_generated_total": samples_total,
         "cost/tokens_generated_total": tokens_total,
+        "cost/questions_used_total": questions_total,
         "cost/peak_gpu_memory_gb": peak_memory,
     }
+
+
+def _informative(groups: GroupBatch) -> torch.Tensor:
+    """Groups with some correct and some wrong answers (DAPO's accuracy filter)."""
+    correct_counts = groups.correct.sum(dim=1)
+    return (correct_counts > 0) & (correct_counts < groups.correct.shape[1])
+
+
+def _select_training_groups(
+    generated: Sequence[GroupBatch],
+    config: Config,
+) -> tuple[GroupBatch, GroupBatch, torch.Tensor, int, int]:
+    """Select informative groups and deterministic padding from generated data."""
+    all_groups = GroupBatch.concat(generated)
+    num_questions = len(all_groups.examples)
+    informative = _informative(all_groups)
+    informative_indices = informative.nonzero(as_tuple=False).flatten().tolist()
+
+    if not config.dynamic_sampling:
+        return (
+            all_groups,
+            all_groups,
+            torch.zeros(num_questions, dtype=torch.bool),
+            int(informative.sum().item()),
+            0,
+        )
+
+    kept_indices = informative_indices[: config.questions_per_step]
+    topped_up = config.questions_per_step - len(kept_indices)
+    if topped_up:
+        filtered_indices = (~informative).nonzero(as_tuple=False).flatten().tolist()
+        kept_indices.extend(filtered_indices[:topped_up])
+    padding = torch.tensor(
+        [False] * (config.questions_per_step - topped_up)
+        + [True] * topped_up,
+        dtype=torch.bool,
+    )
+    return (
+        all_groups,
+        all_groups.select(kept_indices),
+        padding,
+        len(informative_indices),
+        topped_up,
+    )
 
 
 def train(
@@ -381,19 +453,56 @@ def train(
     generator = torch.Generator().manual_seed(config.seed)
     samples_total = 0
     tokens_total = 0
+    questions_total = 0
     latest_metrics: dict[str, float | int] = {}
     train_started = time.perf_counter()
     for step in range(1, config.max_steps + 1):
         step_started = time.perf_counter()
-        step_examples, epoch = stream.take(config.questions_per_step)
         rollout_started = time.perf_counter()
-        rollout = collect_rollout(policy, step_examples, config, generator)
+        generated: list[GroupBatch] = []
+        max_rounds = config.dynamic_max_rounds if config.dynamic_sampling else 1
+        epoch = 0
+        for round_index in range(max_rounds):
+            round_examples, epoch_of_round = stream.take(config.questions_per_step)
+            if round_index == 0:
+                epoch = epoch_of_round
+            generated.append(generate_groups(policy, round_examples, config))
+            if not config.dynamic_sampling:
+                break
+            informative_count = sum(
+                int(_informative(batch).sum().item()) for batch in generated
+            )
+            if informative_count >= config.questions_per_step:
+                break
+
+        (
+            all_groups,
+            kept_groups,
+            padding,
+            informative_groups,
+            topped_up_groups,
+        ) = _select_training_groups(generated, config)
+        rollout = build_rollout(
+            policy,
+            kept_groups,
+            config,
+            generator,
+            padding=padding,
+        )
         rollout_seconds = time.perf_counter() - rollout_started
         update_started = time.perf_counter()
         update = train_step(policy, optimizer, rollout, config)
         update_seconds = time.perf_counter() - update_started
-        samples_total += len(step_examples) * config.samples_per_question
-        tokens_total += int(rollout.stats["tokens_generated"])
+        questions_generated = len(all_groups.examples)
+        samples_total += questions_generated * config.samples_per_question
+        step_quality = quality_stats(all_groups)
+        tokens_total += int(step_quality["tokens_generated"])
+        questions_total += questions_generated
+        overlong_masked_rate = (
+            float(kept_groups.truncated.float().mean().item())
+            if config.overlong_filter
+            else 0.0
+        )
         latest_metrics = _step_metrics(
             step=step,
             epoch=epoch,
@@ -405,20 +514,28 @@ def train(
             step_seconds=time.perf_counter() - step_started,
             samples_total=samples_total,
             tokens_total=tokens_total,
+            questions_total=questions_total,
+            quality_stats=step_quality,
+            dynamic_rounds=len(generated),
+            questions_generated=questions_generated,
+            informative_groups=informative_groups,
+            topped_up_groups=topped_up_groups,
+            kept_accuracy=float(kept_groups.correct.mean().item()),
+            overlong_masked_rate=overlong_masked_rate,
         )
         _append_jsonl(run_directory / "metrics.jsonl", latest_metrics)
         wandb_run.log(latest_metrics, step=step)
 
         if step % config.log_samples_every == 0:
             for group_index in range(
-                min(config.logged_sample_groups, len(step_examples))
+                min(config.logged_sample_groups, len(rollout.examples))
             ):
                 _append_jsonl(
                     run_directory / "samples.jsonl",
                     {
                         "step": step,
-                        "question": step_examples[group_index].question,
-                        "gold": step_examples[group_index].gold,
+                        "question": rollout.examples[group_index].question,
+                        "gold": rollout.examples[group_index].gold,
                         "completions": [
                             completion.text
                             for completion in rollout.completions[group_index]

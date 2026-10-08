@@ -55,6 +55,10 @@ def test_bool_and_tuple_flags() -> None:
         {"eps_high": -0.1},
         {"beta": -0.1},
         {"format_weight": -0.1},
+        {"dynamic_max_rounds": 0},
+        {"overlong_cache": -1},
+        {"max_new_tokens": 64, "overlong_cache": 64},
+        {"overlong_penalty_factor": -0.1},
         {"wandb_mode": "sometimes"},
     ],
 )
@@ -69,3 +73,18 @@ def test_to_dict_and_parser_cover_every_field() -> None:
 
     assert set(Config().to_dict()) == config_names
     assert config_names <= parser_destinations
+
+
+def test_dapo_presets_resolve_independent_and_combined_switches() -> None:
+    dynamic = load_config(["--preset", "dynamic_sampling"])
+    overlong = load_config(["--preset", "overlong"])
+    dapo = load_config(["--preset", "dapo"])
+
+    assert dynamic.dynamic_sampling is True
+    assert dynamic.overlong_cache == 0
+    assert overlong.dynamic_sampling is False
+    assert overlong.overlong_cache == 64
+    assert dapo.eps_high == 0.28
+    assert dapo.aggregation == "token"
+    assert dapo.dynamic_sampling is True
+    assert dapo.overlong_cache == 64

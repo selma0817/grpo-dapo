@@ -43,6 +43,7 @@ def test_build_micro_batches_padding_masks_rows_and_reproducibility() -> None:
             start = len(prompts[question]) - 1
             stop = start + len(completions[question][sample])
             assert torch.all(batch.completion_mask[row_index, start:stop] == 1)
+            assert torch.equal(batch.loss_mask, batch.completion_mask)
 
 
 def test_collect_rollout_rejects_prompts_longer_than_the_limit() -> None:
@@ -145,3 +146,104 @@ def test_format_weight_rewards_a_wrong_box_and_creates_signal() -> None:
     assert rollout.stats["format_rate"] == 0.5
     assert rollout.stats["all_wrong"] == 1.0
     assert rollout.stats["nonzero_variance"] == 1.0
+
+
+def test_build_micro_batches_masks_only_selected_loss_rows() -> None:
+    batches = build_micro_batches(
+        prompt_ids=[[10], [20]],
+        completion_ids=[[[30, 2], [31, 2]], [[40, 2], [41, 2]]],
+        advantages=torch.ones(2, 2),
+        micro_batch_size=2,
+        pad_token_id=0,
+        generator=torch.Generator().manual_seed(9),
+        loss_rows=torch.tensor([[False, True], [True, False]]),
+    )
+
+    for batch in batches:
+        for row_index, row_id in enumerate(batch.row_ids.tolist()):
+            question, sample = divmod(row_id, 2)
+            assert batch.completion_mask[row_index].sum() == 2
+            expected_tokens = 2 if question != sample else 0
+            assert batch.loss_mask[row_index].sum() == expected_tokens
+
+
+def test_overlong_filter_preserves_completion_mask_and_masks_truncation() -> None:
+    from fractions import Fraction
+
+    from grpo_dapo.config import Config
+    from grpo_dapo.data import Example
+    from grpo_dapo.generation import Completion
+    from grpo_dapo.rollout import collect_rollout
+
+    class _OverlongPolicy(_FixedPolicy):
+        def generate(self, prompts, *, num_samples, **kwargs):
+            return [[
+                Completion("cut off", 256, True, (5, 6), (3, 4)),
+                Completion(r"\boxed{1}", 224, False, (7, 2), (3, 4)),
+            ]]
+
+    config = Config(
+        questions_per_step=1,
+        samples_per_question=2,
+        num_minibatches=1,
+        micro_batch_size=2,
+        max_new_tokens=256,
+        overlong_cache=64,
+        overlong_filter=True,
+    )
+    rollout = collect_rollout(
+        _OverlongPolicy(),
+        [Example(0, "q", "1", Fraction(1))],
+        config,
+        torch.Generator().manual_seed(0),
+    )
+
+    batch = rollout.micro_batches[0]
+    for row_index, row_id in enumerate(batch.row_ids.tolist()):
+        assert batch.completion_mask[row_index].sum() == 2
+        assert batch.loss_mask[row_index].sum() == (0 if row_id == 0 else 2)
+    assert rollout.rewards.tolist() == [[-0.5, pytest.approx(0.75)]]
+
+
+def test_padding_zeroes_advantages_even_when_shaped_rewards_vary() -> None:
+    from fractions import Fraction
+
+    from grpo_dapo.config import Config
+    from grpo_dapo.data import Example
+    from grpo_dapo.generation import Completion
+    from grpo_dapo.rollout import build_rollout, generate_groups
+
+    class _VariedWrongPolicy(_FixedPolicy):
+        def generate(self, prompts, *, num_samples, **kwargs):
+            return [
+                [
+                    Completion(r"\boxed{0}", 100, False, (5, 2), (3, 4)),
+                    Completion(r"\boxed{0}", 224, False, (6, 2), (3, 4)),
+                ]
+                for _ in prompts
+            ]
+
+    config = Config(
+        questions_per_step=2,
+        samples_per_question=2,
+        num_minibatches=1,
+        micro_batch_size=2,
+        max_new_tokens=256,
+        overlong_cache=64,
+    )
+    examples = [
+        Example(index, f"q{index}", "1", Fraction(1)) for index in range(2)
+    ]
+    policy = _VariedWrongPolicy()
+    groups = generate_groups(policy, examples, config)
+    assert torch.all(groups.rewards[:, 0] > groups.rewards[:, 1])
+
+    rollout = build_rollout(
+        policy,
+        groups,
+        config,
+        torch.Generator().manual_seed(0),
+        padding=torch.ones(2, dtype=torch.bool),
+    )
+
+    assert torch.equal(rollout.advantages, torch.zeros_like(rollout.advantages))

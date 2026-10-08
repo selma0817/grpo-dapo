@@ -4,12 +4,15 @@ import time
 from fractions import Fraction
 
 import pytest
+import torch
 
+from grpo_dapo.advantage import group_advantages
 from grpo_dapo.reward import (
     compute_reward,
     extract_answer,
     extract_gold,
     is_equivalent,
+    overlong_penalty,
     parse_number,
 )
 
@@ -252,3 +255,60 @@ def test_compute_reward(
     completion: str | None, gold: str | None, expected: float
 ) -> None:
     assert compute_reward(completion, gold) == expected
+
+
+@pytest.mark.parametrize(
+    ("num_tokens", "truncated", "cache", "expected"),
+    [
+        (100, False, 64, 0.0),
+        (192, False, 64, 0.0),
+        (224, False, 64, -0.5),
+        (256, False, 64, -1.0),
+        (100, True, 64, -1.0),
+        (256, True, 0, 0.0),
+    ],
+)
+def test_overlong_penalty(
+    num_tokens: int,
+    truncated: bool,
+    cache: int,
+    expected: float,
+) -> None:
+    assert overlong_penalty(num_tokens, truncated, 256, cache) == expected
+
+
+@pytest.mark.parametrize(
+    ("num_tokens", "max_new_tokens", "cache"),
+    [(-1, 256, 64), (1, 256, -1), (1, 256, 256), (1, 256, 300)],
+)
+def test_overlong_penalty_rejects_invalid_arguments(
+    num_tokens: int,
+    max_new_tokens: int,
+    cache: int,
+) -> None:
+    with pytest.raises(ValueError):
+        overlong_penalty(num_tokens, False, max_new_tokens, cache)
+
+
+def test_half_scaled_reward_matches_shifted_dapo_reward_and_advantages() -> None:
+    correct = torch.tensor([[1.0, 1.0, 0.0, 0.0, 0.0]])
+    penalties = torch.tensor(
+        [[
+            overlong_penalty(100, False, 256, 64),
+            overlong_penalty(224, False, 256, 64),
+            overlong_penalty(150, False, 256, 64),
+            overlong_penalty(224, False, 256, 64),
+            overlong_penalty(256, True, 256, 64),
+        ]]
+    )
+    rewards = correct + 0.5 * penalties
+    dapo_rewards = (2 * correct - 1) + penalties
+    shifted_dapo_rewards = (dapo_rewards + 1) / 2
+
+    torch.testing.assert_close(rewards, shifted_dapo_rewards)
+    torch.testing.assert_close(
+        group_advantages(rewards),
+        group_advantages(dapo_rewards),
+        atol=1e-4,
+        rtol=1e-4,
+    )

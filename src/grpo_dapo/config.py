@@ -32,6 +32,12 @@ class Config:
     aggregation: str = "sample"
     format_weight: float = 0.0
 
+    dynamic_sampling: bool = False
+    dynamic_max_rounds: int = 4
+    overlong_cache: int = 0
+    overlong_penalty_factor: float = 0.5
+    overlong_filter: bool = False
+
     questions_per_step: int = 32
     samples_per_question: int = 8
     temperature: float = 1.0
@@ -80,6 +86,14 @@ class Config:
             raise ValueError("eps_low, eps_high, and beta must be non-negative")
         if self.format_weight < 0:
             raise ValueError("format_weight must be non-negative")
+        if self.dynamic_max_rounds < 1:
+            raise ValueError("dynamic_max_rounds must be at least 1")
+        if not 0 <= self.overlong_cache < self.max_new_tokens:
+            raise ValueError(
+                "overlong_cache must be non-negative and less than max_new_tokens"
+            )
+        if self.overlong_penalty_factor < 0:
+            raise ValueError("overlong_penalty_factor must be non-negative")
         if self.wandb_mode not in {"online", "offline", "disabled"}:
             raise ValueError("wandb_mode must be online, offline, or disabled")
         if self.run_name is None:
@@ -96,6 +110,14 @@ PRESETS: dict[str, dict[str, Any]] = {
     "vanilla_kl": {"beta": 0.04},
     "clip_higher": {"eps_high": 0.28},
     "token_level": {"aggregation": "token"},
+    "dynamic_sampling": {"dynamic_sampling": True},
+    "overlong": {"overlong_cache": 64},
+    "dapo": {
+        "eps_high": 0.28,
+        "aggregation": "token",
+        "dynamic_sampling": True,
+        "overlong_cache": 64,
+    },
 }
 
 
