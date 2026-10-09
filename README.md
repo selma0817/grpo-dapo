@@ -11,6 +11,8 @@ GRPO and DAPO for math reasoning on **Qwen2.5-0.5B-Instruct** with LoRA, impleme
 
 ### DAPO ablation (256-token budget, seed 0)
 
+> **Seed 0 only.** With paired standard errors, only DAPO's gain (+3.6 ± 1.2 points) is clearly beyond test-set noise; the single-technique differences are within about 1.5 standard errors. Seeds 1–2 for vanilla, Clip-Higher, Overlong and DAPO are running.
+
 The table is generated from the run directories, never typed by hand:
 
 ```bash
@@ -223,3 +225,7 @@ results/            kept run summaries and plots
 - Yu et al., *DAPO: An Open-Source LLM Reinforcement Learning System at Scale*, arXiv:2503.14476
 - Hugging Face TRL `GRPOTrainer` (numerical checks) and volcengine/verl `core_algos.py`
 - [rayyy032/qwen-math-grpo-dapo](https://github.com/rayyy032/qwen-math-grpo-dapo) (ablation design and replication target)
+
+## License
+
+MIT, see [LICENSE](LICENSE).
