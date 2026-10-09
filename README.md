@@ -59,13 +59,13 @@ At 512 tokens most of GRPO's gain is *sharpening*: sampled pass@1 rose 18 points
 For each question, sample a group of $G$ answers from the current policy, score them, and use each answer's reward relative to its group as the advantage of every one of its tokens:
 
 $$
-\hat{A}_i = \frac{R_i - \operatorname{mean}(R_1, \dots, R_G)}{\operatorname{std}(R_1, \dots, R_G) + 10^{-4}},
+\hat{A}_i = \frac{R_i - \mathrm{mean}(R_1, \dots, R_G)}{\mathrm{std}(R_1, \dots, R_G) + 10^{-4}},
 \qquad
 \rho_{i,t} = \frac{\pi_\theta(o_{i,t} \mid q, o_{i,<t})}{\pi_{\theta_{\text{old}}}(o_{i,t} \mid q, o_{i,<t})}
 $$
 
 $$
-\mathcal{J}_{\text{GRPO}}(\theta) = \mathbb{E}\left[\frac{1}{G}\sum_{i=1}^{G}\frac{1}{|o_i|}\sum_{t=1}^{|o_i|}\min\Big(\rho_{i,t}\hat{A}_i,\ \operatorname{clip}\big(\rho_{i,t}, 1-\varepsilon, 1+\varepsilon\big)\hat{A}_i\Big) - \beta\, \hat{\mathbb{D}}_{\text{KL}}\big(\pi_\theta \,\|\, \pi_{\text{ref}}\big)\right]
+\mathcal{J}_{\text{GRPO}}(\theta) = \mathbb{E}\left[\frac{1}{G}\sum_{i=1}^{G}\frac{1}{|o_i|}\sum_{t=1}^{|o_i|}\min\Big(\rho_{i,t}\hat{A}_i,\ \mathrm{clip}\big(\rho_{i,t}, 1-\varepsilon, 1+\varepsilon\big)\hat{A}_i\Big) - \beta\, \hat{\mathbb{D}}_{\text{KL}}\big(\pi_\theta \,\|\, \pi_{\text{ref}}\big)\right]
 $$
 
 | Piece | Code |
@@ -83,7 +83,7 @@ Two invariants are checked during training: the model trains on the token ids it
 DAPO keeps the group-relative advantage, drops the KL term, and changes four things:
 
 $$
-\mathcal{J}_{\text{DAPO}}(\theta) = \mathbb{E}\left[\frac{1}{\sum_{i=1}^{G}|o_i|}\sum_{i=1}^{G}\sum_{t=1}^{|o_i|}\min\Big(\rho_{i,t}\hat{A}_i,\ \operatorname{clip}\big(\rho_{i,t}, 1-\varepsilon_{\text{low}}, 1+\varepsilon_{\text{high}}\big)\hat{A}_i\Big)\right]
+\mathcal{J}_{\text{DAPO}}(\theta) = \mathbb{E}\left[\frac{1}{\sum_{i=1}^{G}|o_i|}\sum_{i=1}^{G}\sum_{t=1}^{|o_i|}\min\Big(\rho_{i,t}\hat{A}_i,\ \mathrm{clip}\big(\rho_{i,t}, 1-\varepsilon_{\text{low}}, 1+\varepsilon_{\text{high}}\big)\hat{A}_i\Big)\right]
 \quad \text{s.t.} \quad 0 < \big|\lbrace\, i : o_i \text{ is correct} \,\rbrace\big| < G
 $$
 
