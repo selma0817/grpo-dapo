@@ -11,20 +11,22 @@ GRPO and DAPO for math reasoning on **Qwen2.5-0.5B-Instruct** with LoRA, impleme
 
 ### DAPO ablation (256-token budget, seed 0)
 
-*Runs in progress.* The table is generated from the run directories, never typed by hand:
+The table is generated from the run directories, never typed by hand:
 
 ```bash
 uv run python scripts/ablation_table.py results/train/{vanilla,clip_higher,dynamic_sampling,token_level,overlong,dapo}_256_s0 --baseline results/train/vanilla_256_s0
 ```
 
-| Run | Clip-Higher | Dynamic Sampling | Token-level | Overlong | Greedy acc. | Δ vs vanilla | pass@1 | pass@8 | Greedy format | Greedy trunc. | Mean length | Samples generated | Runtime |
+| Run | Clip-Higher | Dynamic Sampling | Token-level | Overlong | Greedy acc. | Δ vs vanilla_256_s0 | pass@1 | pass@8 | Greedy format | Greedy trunc. | Mean length | Samples generated | Runtime |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `vanilla` | | | | | | — | | | | | | | |
-| `clip_higher` | ✓ | | | | | | | | | | | | |
-| `dynamic_sampling` | | ✓ | | | | | | | | | | | |
-| `token_level` | | | ✓ | | | | | | | | | | |
-| `overlong` | | | | ✓ | | | | | | | | | |
-| `dapo` | ✓ | ✓ | ✓ | ✓ | | | | | | | | | |
+| vanilla_256_s0 |  |  |  |  | 49.7% | — | 46.5% | 74.8% | 89.5% | 11.4% | 175 | 25,600 | 75 min |
+| clip_higher_256_s0 | ✓ |  |  |  | 51.6% | +1.9 ± 1.9† | 46.8% | 75.9% | 90.8% | 9.5% | 173 | 25,600 | 75 min |
+| dynamic_sampling_256_s0 |  | ✓ |  |  | 51.2% | +1.4 ± 1.9† | 47.7% | 74.1% | 86.1% | 14.7% | 186 | 56,832 | 98 min |
+| token_level_256_s0 |  |  | ✓ |  | 49.7% | +0.0 ± 1.9† | 47.8% | 75.1% | 89.8% | 10.5% | 174 | 25,600 | 75 min |
+| overlong_256_s0 |  |  |  | ✓ | 48.1% | -1.7 ± 1.9† | 46.5% | 72.7% | 97.9% | 2.0% | 130 | 25,600 | 71 min |
+| dapo_256_s0 | ✓ | ✓ | ✓ | ✓ | 53.4% | +3.6 ± 1.9† | 49.3% | 76.5% | 95.8% | 4.3% | 155 | 57,856 | 98 min |
+
+Final evaluation on all GSM8K test questions (greedy, plus 8 samples at T = 1 for pass@k). Δ is in percentage points with one standard error, paired over the same questions; † marks an unpaired standard error (per-question records not available).
 
 ### Earlier runs (full GSM8K test set)
 
